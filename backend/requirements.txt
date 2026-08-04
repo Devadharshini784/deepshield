@@ -4,3 +4,8 @@ pymongo
 python-dotenv
 bcrypt
 pyjwt
+pytesseract
+opencv-python
+pillow
+pyzbar
+numpy
