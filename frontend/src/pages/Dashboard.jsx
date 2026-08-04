@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 function Dashboard() {
@@ -28,7 +28,12 @@ function Dashboard() {
           Logout
         </button>
       </div>
-      <p className="text-gray-600">This is your DeepShield dashboard. Analyzer modules will appear here.</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Link to="/screenshot-analyzer" className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition">
+          <h2 className="font-semibold text-lg mb-2">Screenshot Analyzer</h2>
+          <p className="text-sm text-gray-500">Check payment screenshots and images for scam signs</p>
+        </Link>
+      </div>
     </div>
   );
 }
