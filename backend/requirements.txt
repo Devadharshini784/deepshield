@@ -9,3 +9,6 @@ opencv-python
 pillow
 pyzbar
 numpy
+beautifulsoup4
+tldextract
+validators
