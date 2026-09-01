@@ -4,6 +4,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import ScreenshotAnalyzer from "./pages/ScreenshotAnalyzer";
 import EmailAnalyzer from "./pages/EmailAnalyzer";
+import AudioAnalyzer from "./pages/AudioAnalyzer";
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/screenshot-analyzer" element={<ScreenshotAnalyzer />} />
         <Route path="/email-analyzer" element={<EmailAnalyzer />} />
+        <Route path="/audio-analyzer" element={<AudioAnalyzer />} />
       </Routes>
     </BrowserRouter>
   );
