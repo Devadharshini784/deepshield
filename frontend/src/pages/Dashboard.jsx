@@ -41,6 +41,10 @@ function Dashboard() {
           <h2 className="font-semibold text-lg mb-2">Audio Analyzer</h2>
           <p className="text-sm text-gray-500">Check call recordings for scam language and OTP requests</p>
         </Link>
+        <Link to="/combined-analysis" className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition">
+          <h2 className="font-semibold text-lg mb-2">Combined Analysis</h2>
+          <p className="text-sm text-gray-500">Analyze multiple evidence types together for one verdict</p>
+        </Link>
       </div>
     </div>
   );
