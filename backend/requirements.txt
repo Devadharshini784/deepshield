@@ -13,3 +13,4 @@ beautifulsoup4
 tldextract
 validators
 openai-whisper
+reportlab

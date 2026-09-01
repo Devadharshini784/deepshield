@@ -5,6 +5,7 @@ from modules.screenshot_analyzer.routes import screenshot_bp
 from modules.email_analyzer.routes import email_bp
 from modules.audio_analyzer.routes import audio_bp
 from modules.explainable_ai.routes import explain_bp
+from modules.report_generator.routes import report_bp
 
 app = Flask(__name__)
 CORS(app)
@@ -14,6 +15,7 @@ app.register_blueprint(screenshot_bp, url_prefix="/api/screenshot")
 app.register_blueprint(email_bp, url_prefix="/api/email")
 app.register_blueprint(audio_bp, url_prefix="/api/audio")
 app.register_blueprint(explain_bp, url_prefix="/api/explain")
+app.register_blueprint(report_bp, url_prefix="/api/report")
 
 @app.route("/")
 def home():
