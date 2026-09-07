@@ -2,6 +2,7 @@ import re
 import tldextract
 import validators
 from bs4 import BeautifulSoup
+from modules.shared.ai_verifier import is_borderline, get_ai_verdict, combine_rule_and_ai
 
 # Trusted domains that scammers commonly impersonate
 COMMONLY_IMPERSONATED = [
@@ -139,7 +140,6 @@ def calculate_email_risk(sender_findings, content_findings, url_findings):
 
 
 def analyze_email(sender_email, display_name, subject, body):
-    # Strip HTML tags if body contains HTML
     soup = BeautifulSoup(body, "html.parser")
     clean_text = soup.get_text()
 
@@ -149,6 +149,24 @@ def analyze_email(sender_email, display_name, subject, body):
     content_findings = analyze_content(clean_text + " " + subject)
 
     risk = calculate_email_risk(sender_findings, content_findings, url_findings)
+
+    ai_verified = False
+    if is_borderline(risk["score"]):
+        full_context = f"From: {display_name} <{sender_email}>\nSubject: {subject}\n\n{clean_text}"
+        ai_result = get_ai_verdict("Email", full_context, risk["score"], risk["reasons"])
+        final_score, final_reasons = combine_rule_and_ai(risk["score"], risk["reasons"], ai_result)
+        if ai_result.get("ai_available"):
+            ai_verified = True
+            risk["score"] = final_score
+            risk["reasons"] = final_reasons
+            if final_score >= 70:
+                risk["level"] = "High Risk"
+            elif final_score >= 40:
+                risk["level"] = "Medium Risk"
+            else:
+                risk["level"] = "Low Risk"
+
+    risk["ai_verified"] = ai_verified
 
     return {
         "sender_email": sender_email,

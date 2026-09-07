@@ -1,5 +1,7 @@
 import { useNavigate, Link } from "react-router-dom";
 import { useEffect, useState } from "react";
+import Layout from "../components/Layout";
+import Card from "../components/Card";
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -7,46 +9,34 @@ function Dashboard() {
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (!token) {
-      navigate("/login");
-    } else {
-      setName(localStorage.getItem("name") || "User");
-    }
+    if (!token) navigate("/login");
+    else setName(localStorage.getItem("name") || "User");
   }, [navigate]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("name");
-    navigate("/login");
-  };
+  const tools = [
+    { to: "/screenshot-analyzer", title: "Screenshot Analyzer", desc: "Check payment screenshots and images for scam signs", icon: "🖼️" },
+    { to: "/email-analyzer", title: "Email Analyzer", desc: "Check emails for phishing and scam indicators", icon: "📧" },
+    { to: "/audio-analyzer", title: "Audio Analyzer", desc: "Check call recordings for scam language and OTP requests", icon: "🎙️" },
+    { to: "/combined-analysis", title: "Combined Analysis", desc: "Analyze multiple evidence types together for one verdict", icon: "🛡️" },
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Welcome, {name}</h1>
-        <button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
-          Logout
-        </button>
+    <Layout>
+      <h1 className="text-2xl font-bold text-slate-800 mb-1">Welcome back, {name}</h1>
+      <p className="text-slate-500 mb-8">Choose a tool below to start analyzing suspicious content.</p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {tools.map((tool) => (
+          <Link key={tool.to} to={tool.to}>
+            <Card className="hover:shadow-md hover:border-blue-300 transition h-full">
+              <div className="text-3xl mb-3">{tool.icon}</div>
+              <h2 className="font-semibold text-slate-800 mb-1">{tool.title}</h2>
+              <p className="text-sm text-slate-500">{tool.desc}</p>
+            </Card>
+          </Link>
+        ))}
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Link to="/screenshot-analyzer" className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition">
-          <h2 className="font-semibold text-lg mb-2">Screenshot Analyzer</h2>
-          <p className="text-sm text-gray-500">Check payment screenshots and images for scam signs</p>
-        </Link>
-        <Link to="/email-analyzer" className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition">
-          <h2 className="font-semibold text-lg mb-2">Email Analyzer</h2>
-          <p className="text-sm text-gray-500">Check emails for phishing and scam indicators</p>
-        </Link>
-        <Link to="/audio-analyzer" className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition">
-          <h2 className="font-semibold text-lg mb-2">Audio Analyzer</h2>
-          <p className="text-sm text-gray-500">Check call recordings for scam language and OTP requests</p>
-        </Link>
-        <Link to="/combined-analysis" className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition">
-          <h2 className="font-semibold text-lg mb-2">Combined Analysis</h2>
-          <p className="text-sm text-gray-500">Analyze multiple evidence types together for one verdict</p>
-        </Link>
-      </div>
-    </div>
+    </Layout>
   );
 }
 

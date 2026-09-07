@@ -1,5 +1,5 @@
-# This module combines results from Screenshot, Email, and Audio analyzers
-# into one unified, human-readable risk verdict.
+import re
+from datetime import datetime
 
 RECOMMENDATIONS = {
     "High Risk": [
@@ -22,12 +22,66 @@ RECOMMENDATIONS = {
     ]
 }
 
+AMOUNT_PATTERN = re.compile(
+    r'(?:₹|rs\.?|inr)\s?([\d,]+(?:\.\d{1,2})?)|(\$|usd)\s?([\d,]+(?:\.\d{1,2})?)',
+    re.IGNORECASE
+)
+
+
+def extract_amount(text):
+    if not text:
+        return None
+    match = AMOUNT_PATTERN.search(text)
+    if not match:
+        return None
+    raw = match.group(1) or match.group(3)
+    if not raw:
+        return None
+    try:
+        return float(raw.replace(",", ""))
+    except ValueError:
+        return None
+
+
+def parse_timestamp(ts_string):
+    if not ts_string:
+        return None
+    try:
+        return datetime.fromisoformat(ts_string)
+    except (ValueError, TypeError):
+        return None
+
+
+def check_time_window_consistency(evidence_results, window_hours=48):
+    """
+    Compares amounts mentioned across different evidence pieces that happened
+    close together in time. A scammer often quotes different amounts across
+    a screenshot, email, and call, since they're improvising - this catches that.
+    """
+    findings = []
+    enriched = []
+
+    for e in evidence_results:
+        ts = parse_timestamp(e.get("timestamp"))
+        amount = extract_amount(e.get("content", ""))
+        if ts and amount is not None:
+            enriched.append({"type": e.get("type", "Evidence"), "timestamp": ts, "amount": amount})
+
+    for i in range(len(enriched)):
+        for j in range(i + 1, len(enriched)):
+            a, b = enriched[i], enriched[j]
+            diff_hours = abs((a["timestamp"] - b["timestamp"]).total_seconds()) / 3600
+            if diff_hours <= window_hours and abs(a["amount"] - b["amount"]) > 0.01:
+                findings.append(
+                    f"Amount mismatch within {round(diff_hours, 1)}h: {a['type']} references "
+                    f"{a['amount']:,.2f} while {b['type']} references {b['amount']:,.2f} — "
+                    f"scammers often change the claimed amount across different messages or calls"
+                )
+
+    return findings
+
 
 def get_confidence_level(evidence_count, total_reasons):
-    """
-    Confidence grows with more evidence types analyzed together
-    and more concrete reasons found.
-    """
     if evidence_count >= 2 and total_reasons >= 4:
         return "High"
     elif evidence_count >= 1 and total_reasons >= 2:
@@ -46,22 +100,17 @@ def determine_overall_level(combined_score):
 
 
 def generate_plain_explanation(evidence_results, overall_level):
-    """
-    evidence_results: list of dicts like:
-      {"type": "Screenshot", "score": 80, "reasons": [...]}
-    """
     lines = []
 
     if overall_level == "High Risk":
         lines.append(
-            "Multiple strong indicators point to this being a scam. "
-            "The evidence shows patterns commonly used by fraudsters to pressure victims into "
-            "sharing money or sensitive information."
+            "Multiple strong indicators point to this being a scam. The evidence shows patterns "
+            "commonly used by fraudsters to pressure victims into sharing money or sensitive information."
         )
     elif overall_level == "Medium Risk":
         lines.append(
-            "Some suspicious patterns were found. This doesn't confirm a scam, but there are "
-            "enough warning signs that you should verify independently before taking any action."
+            "Some suspicious patterns were found. This doesn't confirm a scam, but there are enough "
+            "warning signs that you should verify independently before taking any action."
         )
     else:
         lines.append(
@@ -73,51 +122,48 @@ def generate_plain_explanation(evidence_results, overall_level):
         etype = evidence.get("type", "Evidence")
         reasons = evidence.get("reasons", [])
         if reasons:
-            top_reasons = reasons[:3]
-            lines.append(f"From the {etype} analysis: " + "; ".join(top_reasons) + ".")
+            lines.append(f"From the {etype} analysis: " + "; ".join(reasons[:3]) + ".")
 
     return " ".join(lines)
 
 
 def combine_evidence(evidence_results):
-    """
-    evidence_results: list of dicts, each like:
-      {"type": "Screenshot", "score": 80, "reasons": ["...", "..."]}
-      {"type": "Email", "score": 60, "reasons": ["...", "..."]}
-      {"type": "Audio", "score": 90, "reasons": ["...", "..."]}
-
-    Returns a combined verdict.
-    """
     if not evidence_results:
         return {
             "combined_score": 0,
             "overall_level": "Low Risk",
             "confidence": "Low",
             "explanation": "No evidence was provided for analysis.",
-            "recommended_actions": RECOMMENDATIONS["Low Risk"]
+            "recommended_actions": RECOMMENDATIONS["Low Risk"],
+            "time_window_findings": []
         }
 
     scores = [e.get("score", 0) for e in evidence_results]
     combined_score = round(sum(scores) / len(scores))
 
-    # If any single piece of evidence is very high risk, don't let averaging water it down too much
     max_score = max(scores)
     if max_score >= 80:
         combined_score = max(combined_score, 75)
 
+    time_window_findings = check_time_window_consistency(evidence_results)
+    if time_window_findings:
+        combined_score = min(combined_score + 30 * len(time_window_findings), 100)
+
     overall_level = determine_overall_level(combined_score)
 
-    total_reasons = sum(len(e.get("reasons", [])) for e in evidence_results)
+    total_reasons = sum(len(e.get("reasons", [])) for e in evidence_results) + len(time_window_findings)
     confidence = get_confidence_level(len(evidence_results), total_reasons)
 
     explanation = generate_plain_explanation(evidence_results, overall_level)
-    recommended_actions = RECOMMENDATIONS[overall_level]
+    if time_window_findings:
+        explanation += " " + " ".join(time_window_findings)
 
     return {
         "combined_score": combined_score,
         "overall_level": overall_level,
         "confidence": confidence,
         "explanation": explanation,
-        "recommended_actions": recommended_actions,
-        "evidence_breakdown": evidence_results
+        "recommended_actions": RECOMMENDATIONS[overall_level],
+        "evidence_breakdown": evidence_results,
+        "time_window_findings": time_window_findings
     }
