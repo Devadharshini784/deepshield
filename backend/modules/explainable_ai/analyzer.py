@@ -100,20 +100,24 @@ def determine_overall_level(combined_score):
 
 
 def generate_plain_explanation(evidence_results, overall_level):
-    lines = []
+    """
+    Returns a LIST of separate paragraphs instead of one merged wall of text,
+    so the UI and PDF can render each with proper spacing.
+    """
+    paragraphs = []
 
     if overall_level == "High Risk":
-        lines.append(
+        paragraphs.append(
             "Multiple strong indicators point to this being a scam. The evidence shows patterns "
             "commonly used by fraudsters to pressure victims into sharing money or sensitive information."
         )
     elif overall_level == "Medium Risk":
-        lines.append(
+        paragraphs.append(
             "Some suspicious patterns were found. This doesn't confirm a scam, but there are enough "
             "warning signs that you should verify independently before taking any action."
         )
     else:
-        lines.append(
+        paragraphs.append(
             "No strong scam indicators were detected in the evidence provided. However, absence of "
             "red flags does not guarantee full safety, always stay cautious."
         )
@@ -122,18 +126,20 @@ def generate_plain_explanation(evidence_results, overall_level):
         etype = evidence.get("type", "Evidence")
         reasons = evidence.get("reasons", [])
         if reasons:
-            lines.append(f"From the {etype} analysis: " + "; ".join(reasons[:3]) + ".")
+            top_reasons = reasons[:3]
+            paragraphs.append(f"From the {etype} analysis: " + " ".join(f"{r}." for r in top_reasons))
 
-    return " ".join(lines)
+    return paragraphs
 
 
 def combine_evidence(evidence_results):
-    if not evidence_results:
+        if not evidence_results:
         return {
             "combined_score": 0,
             "overall_level": "Low Risk",
             "confidence": "Low",
             "explanation": "No evidence was provided for analysis.",
+            "explanation_paragraphs": ["No evidence was provided for analysis."],
             "recommended_actions": RECOMMENDATIONS["Low Risk"],
             "time_window_findings": []
         }
@@ -154,15 +160,18 @@ def combine_evidence(evidence_results):
     total_reasons = sum(len(e.get("reasons", [])) for e in evidence_results) + len(time_window_findings)
     confidence = get_confidence_level(len(evidence_results), total_reasons)
 
-    explanation = generate_plain_explanation(evidence_results, overall_level)
+        explanation_paragraphs = generate_plain_explanation(evidence_results, overall_level)
     if time_window_findings:
-        explanation += " " + " ".join(time_window_findings)
+        explanation_paragraphs.append(
+            "Cross-checking the timing of your evidence also found: " + " ".join(time_window_findings)
+        )
 
     return {
         "combined_score": combined_score,
         "overall_level": overall_level,
         "confidence": confidence,
-        "explanation": explanation,
+        "explanation": " ".join(explanation_paragraphs),  # kept for anything using the old plain-text field
+        "explanation_paragraphs": explanation_paragraphs,  # new: use this for readable rendering
         "recommended_actions": RECOMMENDATIONS[overall_level],
         "evidence_breakdown": evidence_results,
         "time_window_findings": time_window_findings

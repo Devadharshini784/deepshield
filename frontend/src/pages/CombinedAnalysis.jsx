@@ -217,11 +217,13 @@ function CombinedAnalysis() {
             </div>
           )}
 
-          <div>
+                    <div>
             <h3 className="font-semibold text-slate-800 mb-2">Explanation</h3>
-            <p className="text-sm text-slate-600 leading-relaxed bg-slate-50 border border-slate-200 p-4 rounded-lg">
-              {combinedResult.explanation}
-            </p>
+            <div className="bg-slate-50 border border-slate-200 p-4 rounded-lg space-y-3">
+              {(combinedResult.explanation_paragraphs || [combinedResult.explanation]).map((para, i) => (
+                <p key={i} className="text-sm text-slate-600 leading-relaxed">{para}</p>
+              ))}
+            </div>
           </div>
 
           <div>
