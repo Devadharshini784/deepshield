@@ -15,3 +15,6 @@ backend/uploads/*
 # OS
 .DS_Store
 Thumbs.db
+
+# Trained model weights (share separately, too large for Git)
+backend/models/

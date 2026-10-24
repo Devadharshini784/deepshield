@@ -3,6 +3,7 @@ import tldextract
 import validators
 from bs4 import BeautifulSoup
 from modules.shared.ai_verifier import is_borderline, get_ai_verdict, combine_rule_and_ai
+from modules.shared.scam_classifier import classify_text, blend_with_rules
 
 # Trusted domains that scammers commonly impersonate
 COMMONLY_IMPERSONATED = [
@@ -150,6 +151,19 @@ def analyze_email(sender_email, display_name, subject, body):
 
     risk = calculate_email_risk(sender_findings, content_findings, url_findings)
 
+    # Layer 1: our own trained model reasons about the language itself
+    model_result = classify_text(f"{subject} {clean_text}")
+    blended_score, blended_reasons, model_used = blend_with_rules(
+        risk["score"], risk["reasons"], model_result
+    )
+    if model_used:
+        risk["score"] = blended_score
+        risk["reasons"] = blended_reasons
+        risk["level"] = "High Risk" if blended_score >= 70 else "Medium Risk" if blended_score >= 40 else "Low Risk"
+    risk["model_used"] = model_used
+    risk["model_score"] = model_result.get("score", 0) if model_used else None
+
+    # Layer 2: hosted AI reasoning, only for cases still unclear after rules + model
     ai_verified = False
     if is_borderline(risk["score"]):
         full_context = f"From: {display_name} <{sender_email}>\nSubject: {subject}\n\n{clean_text}"

@@ -40,7 +40,7 @@ def build_pdf_report(case_id, created_at, combined_result, evidence_details, scr
                              leftMargin=2 * cm, rightMargin=2 * cm)
     styles = getSampleStyleSheet()
 
-        brand_style = ParagraphStyle("Brand", parent=styles["Normal"], fontSize=22, leading=28, textColor=NAVY,
+    brand_style = ParagraphStyle("Brand", parent=styles["Normal"], fontSize=22, leading=28, textColor=NAVY,
                                   fontName="Helvetica-Bold", alignment=TA_LEFT, spaceAfter=4)
     tagline_style = ParagraphStyle("Tagline", parent=styles["Normal"], fontSize=10, leading=14, textColor=SLATE_TEXT,
                                     alignment=TA_LEFT, spaceAfter=4)
@@ -93,7 +93,7 @@ def build_pdf_report(case_id, created_at, combined_result, evidence_details, scr
     ]))
     elements.append(case_table)
 
-        # Analysis Summary
+    # Analysis Summary
     elements.append(Paragraph("Analysis Summary", heading_style))
     explanation_paragraphs = combined_result.get("explanation_paragraphs") or [combined_result.get("explanation", "No explanation available")]
     for para in explanation_paragraphs:

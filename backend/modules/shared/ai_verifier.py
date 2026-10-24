@@ -1,126 +1,292 @@
 import os
 import json
-import PIL.Image
-import google.generativeai as genai
+import time
+from PIL import Image
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 load_dotenv()
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-2.5-flash")
+client = genai.Client(
+    api_key=os.getenv("GEMINI_API_KEY")
+)
+
+def _generate_with_retry(max_retries=2, delay_seconds=3, **kwargs):
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            return client.models.generate_content(**kwargs)
+        except Exception as e:
+            last_error = e
+            error_text = str(e)
+            if "503" in error_text or "UNAVAILABLE" in error_text or "overloaded" in error_text.lower():
+                if attempt < max_retries:
+                    time.sleep(delay_seconds)
+                    continue
+            raise last_error
+    raise last_error
+
+MODEL_NAME = "gemini-3.6-flash"
 
 BORDERLINE_LOW = 25
 BORDERLINE_HIGH = 70
 
+class ImageVerdict(BaseModel):
+    ai_score: int
+    ai_level: str
+    confidence: str
+    reasons: list[str]
 
 def is_borderline(score):
     return BORDERLINE_LOW <= score <= BORDERLINE_HIGH
 
 
 def get_ai_verdict(evidence_type, content_summary, rule_score, rule_reasons):
-    prompt = f"""You are a fraud detection expert analyzing potential scam evidence.
+
+    prompt = f"""
+You are a fraud detection expert analyzing potential scam evidence.
 
 Evidence type: {evidence_type}
+
 Content to analyze:
 ---
 {content_summary[:3000]}
 ---
 
-A rule-based system gave this a preliminary risk score of {rule_score}/100 for these reasons:
+A rule-based system gave this a preliminary risk score of {rule_score}/100
+for these reasons:
+
 {chr(10).join('- ' + r for r in rule_reasons)}
 
-Carefully assess whether this content shows signs of being a scam, phishing attempt, fraudulent
-payment, or social engineering. Consider things a keyword list would miss: tone, plausibility,
-psychological pressure tactics, whether claims make logical sense, and subtle inconsistencies.
+Carefully assess whether this content shows signs of:
+- scam
+- phishing
+- fraudulent payment
+- social engineering
+- impersonation
+- urgency or psychological pressure
+- suspicious requests
+- inconsistencies
 
-Respond with ONLY valid JSON, no other text, no markdown code fences, in this exact format:
+Do not blindly agree with the rule-based score.
+Perform your own assessment.
+
+Respond with ONLY valid JSON.
+
+Use exactly this format:
+
 {{
   "ai_score": <integer 0-100>,
   "ai_level": "<Low Risk|Medium Risk|High Risk>",
   "confidence": "<Low|Medium|High>",
-  "reasons": ["<specific reason 1>", "<specific reason 2>", "<up to 4 reasons>"]
-}}"""
+  "reasons": [
+    "<specific reason 1>",
+    "<specific reason 2>",
+    "<up to 4 reasons>"
+  ]
+}}
+"""
 
     try:
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(temperature=0.2, max_output_tokens=500)
+
+        response = _generate_with_retry(
+            model=MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.2,
+                max_output_tokens=1024,
+                thinking_config=types.ThinkingConfig(thinking_level="low")
+            )
         )
-        text = response.text.strip().replace("```json", "").replace("```", "").strip()
+
+        text = response.text.strip()
+
+        text = text.replace("```json", "")
+        text = text.replace("```", "")
+        text = text.strip()
+
         result = json.loads(text)
+
         result["ai_available"] = True
+
         return result
+
     except Exception as e:
+
+        print("GEMINI TEXT ERROR:", repr(e))
+
         return {
             "ai_score": rule_score,
             "ai_level": None,
             "confidence": "Low",
-            "reasons": [f"AI verification unavailable: {str(e)}"],
+            "reasons": [
+                f"AI verification unavailable: {str(e)}"
+            ],
             "ai_available": False
         }
 
 
-def get_image_ai_verdict(image_path, extracted_text, rule_score, rule_reasons):
-    """
-    Sends the ACTUAL screenshot image (not just OCR'd text) to Gemini's vision model.
-    This catches things text-only keyword matching structurally cannot: unnatural fonts,
-    inconsistent UI elements, fake app branding, and known scam patterns like someone
-    claiming they "overpaid by mistake" and demanding a refund based on an unverifiable image.
-    """
-    prompt = f"""You are a fraud detection expert examining a screenshot submitted as scam evidence.
-Look carefully at the actual image provided, not just the OCR text below.
+def get_image_ai_verdict(
+    image_path,
+    extracted_text,
+    rule_score,
+    rule_reasons
+):
 
-OCR-extracted text from the image:
+    prompt = f"""
+You are a fraud detection expert examining a screenshot submitted
+as potential scam evidence.
+
+IMPORTANT:
+Examine the ACTUAL IMAGE carefully.
+Do not rely only on OCR text.
+
+OCR-extracted text:
 ---
-{extracted_text[:2000]}
+{extracted_text[:3000]}
 ---
 
-A rule-based system gave this a preliminary risk score of {rule_score}/100 for these reasons:
+A rule-based system gave this screenshot a preliminary risk score
+of {rule_score}/100 for these reasons:
+
 {chr(10).join('- ' + r for r in rule_reasons)}
 
-Examine the image itself for:
-- Signs of AI generation: unnatural fonts, inconsistent icon rendering, blurry/warped logos,
-  impossible or generic UI layouts, wrong app branding, inconsistent shadows or spacing
-- Signs of manual editing: mismatched fonts or sizes, misaligned text, obvious copy-paste seams
-- Whether this genuinely looks like a real phone screenshot of a banking/UPI/payment app
-- The scam pattern in the text: a very common scam is someone claiming they "sent money by
-  mistake" or "overpaid" and asking the recipient to refund it, using a fabricated screenshot as
-  fake proof. Treat this pattern as HIGH RISK regardless of how convincing the image looks,
-  because a screenshot can never prove money actually moved — only the recipient's own bank/UPI
-  app balance can confirm that.
+Analyze the actual screenshot for:
 
-Respond with ONLY valid JSON, no other text, no markdown code fences, in this exact format:
-{{
-  "ai_score": <integer 0-100>,
-  "ai_level": "<Low Risk|Medium Risk|High Risk>",
-  "confidence": "<Low|Medium|High>",
-  "reasons": ["<specific reason 1>", "<specific reason 2>", "<up to 4 reasons>"]
-}}"""
+1. Whether the screenshot looks like a genuine banking,
+UPI, or payment application.
+
+2. Visual inconsistencies such as:
+- unusual fonts
+- inconsistent font sizes
+- incorrect spacing
+- strange icons
+- inconsistent logos
+- distorted graphics
+- unnatural UI elements
+- suspicious alignment
+- fake-looking branding
+
+3. Signs of image manipulation or synthetic generation.
+
+4. Whether the payment information looks internally consistent.
+
+5. Whether the screenshot contains a suspicious payment claim.
+
+6. Whether transaction details appear suspicious,
+generic, fabricated, or inconsistent.
+
+IMPORTANT SECURITY PRINCIPLE:
+
+A screenshot claiming that money was transferred is NOT proof
+that money was actually received.
+
+The recipient should verify the transaction directly inside
+their own bank or UPI application.
+
+Do not blindly agree with the rule-based score.
+Perform your own independent assessment.
+
+Return ONLY the requested structured fields.
+"""
 
     try:
-        image = PIL.Image.open(image_path)
-        response = model.generate_content(
-            [prompt, image],
-            generation_config=genai.types.GenerationConfig(temperature=0.2, max_output_tokens=500)
+
+        image = Image.open(image_path)
+
+        response = _generate_with_retry(
+            model=MODEL_NAME,
+            contents=[
+                prompt,
+                image
+            ],
+            config=types.GenerateContentConfig(
+                temperature=0.2,
+                max_output_tokens=1024,
+                thinking_config=types.ThinkingConfig(thinking_level="low"),
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "OBJECT",
+                    "properties": {
+                        "ai_score": {
+                            "type": "INTEGER"
+                        },
+                        "ai_level": {
+                            "type": "STRING"
+                        },
+                        "confidence": {
+                            "type": "STRING"
+                        },
+                        "reasons": {
+                            "type": "ARRAY",
+                            "items": {
+                                "type": "STRING"
+                            }
+                        }
+                    },
+                    "required": [
+                        "ai_score",
+                        "ai_level",
+                        "confidence",
+                        "reasons"
+                    ]
+                }
+            )
         )
-        text = response.text.strip().replace("```json", "").replace("```", "").strip()
+
+        print("RAW GEMINI RESPONSE:")
+        print(repr(response.text))
+
+        text = response.text.strip()
+
         result = json.loads(text)
+
+        # Safety checks
+        result["ai_score"] = max(
+            0,
+            min(100, int(result["ai_score"]))
+        )
+
         result["ai_available"] = True
+
         return result
+
     except Exception as e:
+
+        print("GEMINI IMAGE ERROR:", repr(e))
+
         return {
             "ai_score": rule_score,
             "ai_level": None,
             "confidence": "Low",
-            "reasons": [f"AI visual verification unavailable: {str(e)}"],
+            "reasons": [
+                f"AI visual verification unavailable: {str(e)}"
+            ],
             "ai_available": False
         }
-
-
+    
 def combine_rule_and_ai(rule_score, rule_reasons, ai_result):
     if not ai_result.get("ai_available"):
         return rule_score, rule_reasons
 
-    final_score = round((rule_score * 0.4) + (ai_result["ai_score"] * 0.6))
+    ai_score = ai_result["ai_score"]
+    ai_confidence = str(ai_result.get("confidence", "Medium")).strip().lower()
+
+    # A confident AI verdict should carry more weight than a fixed 60% -
+    # Gemini can reason about things (visual fakes, implausible claims,
+    # tone) that the rule-based score structurally cannot see.
+    weight_by_confidence = {"high": 0.75, "medium": 0.6, "low": 0.5}
+    ai_weight = weight_by_confidence.get(ai_confidence, 0.6)
+    rule_weight = 1 - ai_weight
+
+    final_score = round((rule_score * rule_weight) + (ai_score * ai_weight))
+
+    # Don't let a confidently High Risk AI verdict get diluted down into a
+    # different risk tier by an unrelated, more cautious rule score.
+    if ai_confidence == "high" and ai_score >= 70:
+        final_score = max(final_score, 70)
+
     combined_reasons = rule_reasons + [f"AI check: {r}" for r in ai_result.get("reasons", [])]
     return final_score, combined_reasons

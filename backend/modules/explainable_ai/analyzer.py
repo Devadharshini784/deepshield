@@ -133,7 +133,15 @@ def generate_plain_explanation(evidence_results, overall_level):
 
 
 def combine_evidence(evidence_results):
-        if not evidence_results:
+    """
+    evidence_results: list of dicts, each like:
+      {"type": "Screenshot", "score": 80, "reasons": ["...", "..."], "content": "...", "timestamp": "2026-09-01T15:30"}
+      {"type": "Email", "score": 60, "reasons": ["...", "..."], "content": "...", "timestamp": "..."}
+      {"type": "Audio", "score": 90, "reasons": ["...", "..."], "content": "...", "timestamp": "..."}
+
+    Returns a combined verdict.
+    """
+    if not evidence_results:
         return {
             "combined_score": 0,
             "overall_level": "Low Risk",
@@ -147,6 +155,7 @@ def combine_evidence(evidence_results):
     scores = [e.get("score", 0) for e in evidence_results]
     combined_score = round(sum(scores) / len(scores))
 
+    # If any single piece of evidence is very high risk, don't let averaging water it down too much
     max_score = max(scores)
     if max_score >= 80:
         combined_score = max(combined_score, 75)
@@ -160,7 +169,7 @@ def combine_evidence(evidence_results):
     total_reasons = sum(len(e.get("reasons", [])) for e in evidence_results) + len(time_window_findings)
     confidence = get_confidence_level(len(evidence_results), total_reasons)
 
-        explanation_paragraphs = generate_plain_explanation(evidence_results, overall_level)
+    explanation_paragraphs = generate_plain_explanation(evidence_results, overall_level)
     if time_window_findings:
         explanation_paragraphs.append(
             "Cross-checking the timing of your evidence also found: " + " ".join(time_window_findings)

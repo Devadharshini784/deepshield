@@ -164,34 +164,89 @@ def calculate_risk_score(extracted_text, qr_results, manipulation_result,
 
 
 def analyze_screenshot(image_path):
+
     extracted_text = extract_text_from_image(image_path)
+
+    print("\n========== SCREENSHOT DEBUG ==========")
+    print("OCR TEXT:")
+    print(extracted_text)
+    print("======================================")
+
     qr_results = detect_qr_codes(image_path)
     manipulation_result = detect_image_manipulation(image_path)
-    fake_payment_findings, has_payment_claim = detect_fake_payment_patterns(extracted_text)
-    authenticity_findings = check_authenticity_signals(image_path, extracted_text)
+
+    fake_payment_findings, has_payment_claim = detect_fake_payment_patterns(
+        extracted_text
+    )
+
+    print("HAS PAYMENT CLAIM:", has_payment_claim)
+
+    authenticity_findings = check_authenticity_signals(
+        image_path,
+        extracted_text
+    )
+
     refund_scam_findings = detect_refund_scam_pattern(extracted_text)
 
     risk = calculate_risk_score(
-        extracted_text, qr_results, manipulation_result,
-        fake_payment_findings, authenticity_findings, has_payment_claim, refund_scam_findings
+        extracted_text,
+        qr_results,
+        manipulation_result,
+        fake_payment_findings,
+        authenticity_findings,
+        has_payment_claim,
+        refund_scam_findings
     )
 
-    # Always run visual AI verification when there's a payment claim - this is the actual
-    # accuracy fix, since rule-based checks alone cannot judge a convincing fake image.
+    print("RULE SCORE:", risk["score"])
+
     ai_verified = False
+
     if has_payment_claim:
-        ai_result = get_image_ai_verdict(image_path, extracted_text, risk["score"], risk["reasons"])
-        final_score, final_reasons = combine_rule_and_ai(risk["score"], risk["reasons"], ai_result)
+
+        print("\n========== GEMINI IMAGE CHECK ==========")
+        print("Payment claim detected:", has_payment_claim)
+        print("Rule score before Gemini:", risk["score"])
+
+        ai_result = get_image_ai_verdict(
+            image_path,
+            extracted_text,
+            risk["score"],
+            risk["reasons"]
+        )
+
+        print("Gemini result:", ai_result)
+        print("Gemini available:", ai_result.get("ai_available"))
+        print("Gemini score:", ai_result.get("ai_score"))
+
+        final_score, final_reasons = combine_rule_and_ai(
+            risk["score"],
+            risk["reasons"],
+            ai_result
+        )
+
+        print(">>> FINAL SCORE AFTER AI:", final_score)
+
         if ai_result.get("ai_available"):
             ai_verified = True
-            # Never let AI blending pull the score below the refund-scam floor
+
             if refund_scam_findings:
                 final_score = max(final_score, 70)
+
             risk["score"] = final_score
             risk["reasons"] = final_reasons
-            risk["level"] = "High Risk" if final_score >= 70 else "Medium Risk" if final_score >= 40 else "Low Risk"
+
+            risk["level"] = (
+                "High Risk" if final_score >= 70
+                else "Medium Risk" if final_score >= 40
+                else "Low Risk"
+            )
 
     risk["ai_verified"] = ai_verified
+
+    print(">>> AI VERIFIED:", ai_verified)
+    print(">>> FINAL RISK:", risk["score"])
+    print("======================================\n")
 
     return {
         "extracted_text": extracted_text,

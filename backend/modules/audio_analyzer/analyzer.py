@@ -1,10 +1,13 @@
 import os
 import re
+import subprocess
+import tempfile
 from difflib import SequenceMatcher
 import whisper
 from pyannote.audio import Pipeline
 from dotenv import load_dotenv
 from modules.shared.ai_verifier import is_borderline, get_ai_verdict, combine_rule_and_ai
+from modules.shared.scam_classifier import classify_text, blend_with_rules
 
 load_dotenv()
 
@@ -18,7 +21,7 @@ print("Loading speaker diarization model, this happens once at startup...")
 if HF_TOKEN:
     try:
         diarization_pipeline = Pipeline.from_pretrained(
-            "pyannote/speaker-diarization-3.1", use_auth_token=HF_TOKEN
+            "pyannote/speaker-diarization-3.1", token=HF_TOKEN
         )
         print("Speaker diarization model loaded.")
     except Exception as e:
@@ -71,18 +74,60 @@ def transcribe_with_timestamps(audio_path):
     return result["text"].strip(), result.get("segments", [])
 
 
+def _convert_to_wav(audio_path):
+    """
+    Converts any input audio to a standardized 16kHz mono WAV file.
+    Pyannote's chunking is strict about exact sample counts, and compressed
+    formats like MP3 can decode to a handful of samples off depending on the
+    backend, causing 'resulted in X samples instead of expected Y' errors.
+    Converting to a clean WAV first avoids this entirely.
+    """
+    fd, wav_path = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", audio_path, "-ar", "16000", "-ac", "1", wav_path],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        return wav_path
+    except Exception as e:
+        print(f"Could not convert audio to WAV for diarization: {e}")
+        if os.path.exists(wav_path):
+            os.remove(wav_path)
+        return None
+
+
 def diarize_speakers(audio_path):
     if diarization_pipeline is None:
         return None
+
+    wav_path = _convert_to_wav(audio_path)
+    target_path = wav_path if wav_path else audio_path
+
     try:
-        diarization = diarization_pipeline(audio_path)
+        result = diarization_pipeline(target_path)
+
+        # pyannote.audio 4.x wraps output in a DiarizeOutput object with
+        # .speaker_diarization (overlaps kept) and .exclusive_speaker_diarization
+        # (overlaps removed - recommended for aligning with a transcript like ours).
+        # Older 3.x versions return the Annotation directly with no wrapper.
+        if hasattr(result, "exclusive_speaker_diarization"):
+            annotation = result.exclusive_speaker_diarization
+        elif hasattr(result, "speaker_diarization"):
+            annotation = result.speaker_diarization
+        else:
+            annotation = result
+
         turns = []
-        for turn, _, speaker in diarization.itertracks(yield_label=True):
+        for turn, _, speaker in annotation.itertracks(yield_label=True):
             turns.append({"start": turn.start, "end": turn.end, "speaker": speaker})
         return turns
     except Exception as e:
         print(f"Diarization failed, continuing without speaker labels: {e}")
         return None
+    finally:
+        if wav_path and os.path.exists(wav_path):
+            os.remove(wav_path)
 
 
 def label_segments_with_speakers(whisper_segments, diarization_turns):
@@ -243,6 +288,19 @@ def analyze_audio(audio_path):
         scam_kw, money_kw, otp_kw, manipulation_kw, robocall_kw, phone_numbers, is_repeated_script
     )
 
+    # Layer 1: our own trained model reads the transcript as language
+    model_result = classify_text(transcript)
+    blended_score, blended_reasons, model_used = blend_with_rules(
+        risk["score"], risk["reasons"], model_result
+    )
+    if model_used:
+        risk["score"] = blended_score
+        risk["reasons"] = blended_reasons
+        risk["level"] = "High Risk" if blended_score >= 70 else "Medium Risk" if blended_score >= 40 else "Low Risk"
+    risk["model_used"] = model_used
+    risk["model_score"] = model_result.get("score", 0) if model_used else None
+
+    # Layer 2: hosted AI reasoning for anything still unclear
     ai_verified = False
     if is_borderline(risk["score"]) and transcript.strip():
         content_for_ai = labeled_transcript or transcript
