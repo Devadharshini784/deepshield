@@ -173,7 +173,7 @@ DEEP SHIELD is an investigative aid and does not replace professional or legal a
 
 ## Built By
 
-**Devadharshini and Team**
+**Subhashini and Devadharshini**
 
 > Built with React, Flask, MongoDB, and AI to make scam investigation more accessible. 🚀
 
