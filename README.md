@@ -1,4 +1,4 @@
-# DEEP SHIELD 🛡️
+# 🔍 ThreatLens
 
 > Detect scams. Understand the risks. Organize your evidence.
 
