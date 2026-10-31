@@ -2,7 +2,7 @@
 
 > Detect scams. Understand the risks. Organize your evidence.
 
-DEEP SHIELD is a multimodal AI-powered scam detection system that analyzes screenshots, emails, and call recordings to identify potential scams, explain its findings, and generate PDF reports for cybercrime complaints.
+ThreatLens is a multimodal AI-powered scam detection system that analyzes screenshots, emails, and call recordings to identify potential scams, explain its findings, and generate PDF reports for cybercrime complaints.
 
 ---
 
@@ -73,8 +73,8 @@ DEEP SHIELD is a multimodal AI-powered scam detection system that analyzes scree
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/deepshield.git
-cd deepshield
+git clone https://github.com/YOUR-USERNAME/ThreatLens.git
+cd ThreatLens
 ```
 
 ### Setup Backend
@@ -90,7 +90,7 @@ Create a `backend/.env` file:
 
 ```env
 MONGO_URI=mongodb://localhost:27017/
-DB_NAME=deepshield_db
+DB_NAME=ThreatLens_db
 JWT_SECRET=your_secret_key
 GEMINI_API_KEY=your_gemini_api_key
 HF_TOKEN=your_huggingface_token
@@ -131,7 +131,7 @@ Visit `http://localhost:5173` to access the application.
 ## Project Structure
 
 ```text
-deepshield/
+ThreatLens/
 ├── backend/
 │   ├── app.py
 │   ├── modules/
@@ -167,7 +167,7 @@ deepshield/
 - Detection accuracy depends on the evidence, language, and available models.
 - AI predictions may be incorrect. Always verify suspicious transactions independently.
 
-DEEP SHIELD is an investigative aid and does not replace professional or legal advice.
+ThreatLens is an investigative aid and does not replace professional or legal advice.
 
 ---
 
